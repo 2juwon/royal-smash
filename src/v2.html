@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#5aa9ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>로얄 스매시</title>
+<meta name="description" content="대포로 구슬을 쏴서 왕궁 원탁 위 블록을 모두 떨어뜨리는 3D 놀이. 태블릿에서 톡 누르면 발사!">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+/* VOICE: 아이가 깔깔 웃는 왕국 축제 — 크고 둥글고 신나게
+   IDEA: 내가 대포 뒤에 서서 왕궁 식탁 위 장난감 탑을 정면으로 쏘는 놀이
+   PICTURE: 화면 전체가 3D 놀이판 — 하늘, 먼 성, 빨간 원탁, 알록달록 블록, 아래쪽 내 대포
+   COLOUR and TYPE: 하늘 파랑 + 왕실 빨강 + 금색 강조, 글씨는 Jua
+   LAYOUT: 화면 가득, 위에 큰 버튼 몇 개, 메뉴는 가운데 카드 */
+:root{color-scheme:light;--red:#d8343f;--gold:#ffc83d;--ink:#2a1f3d}
+[hidden]{display:none!important}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#7ec3ff;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+body{font:18px/1.3 Jua,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:var(--ink)}
+#gl,#fx{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#fx{pointer-events:none}
+button{font:inherit;color:inherit;border:0;cursor:pointer;touch-action:manipulation}
+button:focus-visible{outline:4px solid #fff;outline-offset:2px}
+.hud{position:fixed;left:0;right:0;top:0;display:flex;align-items:flex-start;gap:10px;padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));pointer-events:none}
+.hud>*{pointer-events:auto}
+.ib{width:58px;height:58px;border-radius:18px;background:#fff;box-shadow:0 4px 0 #0002;display:grid;place-items:center;flex:none}
+.ib:active{transform:translateY(3px);box-shadow:0 1px 0 #0002}
+.ib svg{width:30px;height:30px}
+.pill{background:#fffffff0;border-radius:18px;padding:6px 16px;box-shadow:0 4px 0 #0002;height:58px;display:flex;align-items:center;gap:10px;white-space:nowrap}
+.stage{font-size:22px}
+.shots{font-size:22px}.shots i{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#8e9bbd,#1d2440 60%);display:block}
+.sp{flex:1}
+.prog{width:min(32vw,300px);display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:4px}
+.bar{height:16px;border-radius:9px;background:#e9e1f3;overflow:hidden}
+.bar div{height:100%;width:0;background:linear-gradient(90deg,#ffb52e,#ff6a3d);border-radius:9px;transition:width .3s}
+.pt{font-size:16px}
+.ov{position:fixed;inset:0;display:grid;place-items:center;background:#1b2a5a55;padding:16px;z-index:5}
+.card{background:#fff;border-radius:32px;padding:26px 28px;width:min(560px,100%);text-align:center;box-shadow:0 10px 0 #0003;max-height:100%;overflow:auto}
+.title{font-size:clamp(44px,8vw,78px);line-height:1.02;color:var(--red);text-shadow:0 4px 0 var(--gold),0 7px 0 #0002;margin:6px 0 4px}
+.sub{color:#6b5b86;margin:0 0 20px}
+.big{display:block;width:100%;min-height:74px;border-radius:24px;font-size:30px;margin:12px 0;background:var(--gold);box-shadow:0 6px 0 #d99a10;color:#5a3500}
+.big.red{background:var(--red);color:#fff;box-shadow:0 6px 0 #9b1f28}
+.big.blue{background:#4f8df0;color:#fff;box-shadow:0 6px 0 #2a5fb8}
+.big:active{transform:translateY(4px);box-shadow:0 2px 0 #0003}
+.row{display:flex;gap:12px}.row .big{flex:1}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:8px 0 14px}
+.lv{aspect-ratio:1;border-radius:22px;background:#4f8df0;color:#fff;font-size:34px;box-shadow:0 5px 0 #2a5fb8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.lv small{font-size:16px;color:var(--gold);letter-spacing:1px}
+.lv[disabled]{background:#cfd6e4;box-shadow:0 5px 0 #aab2c4;color:#8890a3;cursor:default}
+.lv:not([disabled]):active{transform:translateY(3px)}
+.stars{font-size:70px;letter-spacing:8px;margin:4px 0;color:#e4dcec}
+.stars b{color:var(--gold);text-shadow:0 4px 0 #d99a10;display:inline-block;animation:pop .45s backwards}
+.stars b:nth-child(2){animation-delay:.25s}.stars b:nth-child(3){animation-delay:.5s}
+@keyframes pop{0%{transform:scale(0) rotate(-40deg)}70%{transform:scale(1.3)}100%{transform:scale(1)}}
+.res{font-size:40px;margin:0;color:var(--red)}
+.hint{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);background:#fffffff0;border-radius:20px;padding:10px 22px;font-size:22px;box-shadow:0 4px 0 #0002;pointer-events:none;transition:opacity .5s;white-space:nowrap}
+.hint.off{opacity:0}
+.tiny{font-size:15px;color:#8a7ea0;margin-top:8px}
+.pop{position:fixed;left:0;top:0;font-size:34px;color:#fff;-webkit-text-stroke:2px #2a1f3d;paint-order:stroke;pointer-events:none;white-space:nowrap;animation:up 1s forwards;text-shadow:0 3px 0 #2a1f3d}
+@keyframes up{0%{opacity:0;transform:translate(-50%,-30%) scale(.6)}20%{opacity:1;transform:translate(-50%,-60%) scale(1.15)}100%{opacity:0;transform:translate(-50%,-160%) scale(1)}}
+.mark{position:fixed;width:56px;height:56px;margin:-28px 0 0 -28px;border:5px solid #ff4d5e;border-radius:50%;pointer-events:none;animation:mk .5s forwards}
+@keyframes mk{from{transform:scale(1.6);opacity:1}to{transform:scale(.5);opacity:0}}
+@media (max-width:700px){.ib,.pill{height:50px}.ib{width:50px}.stage{font-size:17px}.prog{width:28vw}}
+@media (max-width:560px){.stage{display:none}}
+@media (max-height:500px){.card{padding:16px 20px}.big{min-height:56px;font-size:24px;margin:8px 0}.title{font-size:44px}.grid{grid-template-columns:repeat(6,minmax(0,1fr))}.lv{font-size:26px}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="fx"></canvas>
+
+<div class="hud" id="hud" hidden>
+  <button class="ib" id="bHome" aria-label="처음 화면"><svg viewBox="0 0 24 24" fill="none" stroke="#2a1f3d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/></svg></button>
+  <div class="pill stage" id="stageLbl">1단계</div>
+  <div class="pill shots"><i></i><span id="shotTxt">0</span></div>
+  <div class="sp"></div>
+  <div class="pill prog"><div class="bar"><div id="barIn"></div></div><div class="pt" id="leftTxt">남은 블록 0개</div></div>
+  <button class="ib" id="bRetry" aria-label="다시 하기"><svg viewBox="0 0 24 24" fill="none" stroke="#2a1f3d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v5h5"/></svg></button>
+  <button class="ib" id="bSound" aria-label="소리"><svg viewBox="0 0 24 24" fill="none" stroke="#2a1f3d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path id="snd1" d="M16.5 8.5a5 5 0 0 1 0 7"/><path id="snd2" d="M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
+</div>
+<div class="hint off" id="hint">블록을 톡! 누르면 구슬이 날아가요 · 옆으로 밀면 돌아봐요</div>
+
+<div class="ov" id="ovMenu">
+  <div class="card">
+    <h1 class="title">로얄 스매시</h1>
+    <p class="sub">대포로 구슬을 쏴서 블록을 모두 떨어뜨려요</p>
+    <button class="big red" id="bPlay">스테이지 놀이</button>
+    <button class="big blue" id="bFree">무한 블록 놀이</button>
+    <button class="big" id="bFull">전체 화면으로</button>
+    <p class="tiny">태블릿은 가로로 눕혀서 하면 더 넓어요</p>
+  </div>
+</div>
+<div class="ov" id="ovLevels" hidden>
+  <div class="card">
+    <h2 class="res">어느 탑을 부술까?</h2>
+    <div class="grid" id="lvGrid"></div>
+    <button class="big" id="bBack">처음으로</button>
+  </div>
+</div>
+<div class="ov" id="ovResult" hidden>
+  <div class="card">
+    <p class="res" id="resTitle">와르르!</p>
+    <div class="stars" id="resStars"></div>
+    <p class="sub" id="resSub"></p>
+    <div class="row"><button class="big blue" id="bAgain">다시</button><button class="big red" id="bNext">다음 탑</button></div>
+    <button class="big" id="bList">탑 고르기</button>
+  </div>
+</div>
+<script>/*BUNDLE*/</script>
+</body>
+</html>

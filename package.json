@@ -1,0 +1,6 @@
+{
+  "name": "royal-smash",
+  "private": true,
+  "scripts": { "build": "node build.js" },
+  "devDependencies": { "three": "0.170.0", "cannon-es": "0.20.0", "esbuild": "^0.24.0" }
+}
