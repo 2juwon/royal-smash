@@ -9,23 +9,60 @@ const save = () => { try { localStorage.setItem('royal-smash-3d-v1', JSON.string
 
 /* ---------------- 소리 ---------------- */
 const S = {
-  ac: null, lastKnock: 0,
-  init() { if (!this.ac) { try { this.ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (this.ac && this.ac.state === 'suspended') this.ac.resume(); },
-  noise(dur, f, vol, q = 1) {
-    if (!store.sound || !this.ac) return; const a = this.ac, n = a.createBuffer(1, a.sampleRate * dur, a.sampleRate), d = n.getChannelData(0);
+  ac: null, out: null, lastKnock: 0, log: [],
+  init() {
+    if (!this.ac) { try { this.ac = new (window.AudioContext || window.webkitAudioContext)();
+      const c = this.ac.createDynamicsCompressor(); c.threshold.value = -14; c.ratio.value = 6; c.connect(this.ac.destination); this.out = c; } catch (e) {} }
+    if (this.ac && this.ac.state === 'suspended') this.ac.resume();
+  },
+  ok() { return store.sound && this.ac; },
+  // 잡음 한 방 (at: 몇 초 뒤, type: lowpass/bandpass)
+  noise(dur, f, vol, q = 1, at = 0, type = 'lowpass') {
+    if (!this.ok()) return; const a = this.ac, n = a.createBuffer(1, Math.max(1, a.sampleRate * dur | 0), a.sampleRate), d = n.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
-    const s = a.createBufferSource(), fl = a.createBiquadFilter(), g = a.createGain(); s.buffer = n; fl.type = 'lowpass'; fl.frequency.value = f; fl.Q.value = q; g.gain.value = vol;
-    s.connect(fl).connect(g).connect(a.destination); s.start();
+    const s = a.createBufferSource(), fl = a.createBiquadFilter(), g = a.createGain(); s.buffer = n; fl.type = type; fl.frequency.value = f; fl.Q.value = q; g.gain.value = vol;
+    s.connect(fl).connect(g).connect(this.out); s.start(a.currentTime + at);
   },
-  tone(f, dur, type, vol, f2) {
-    if (!store.sound || !this.ac) return; const a = this.ac, o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
+  // 음 하나: f → f2 로 미끄러짐, vib: [빠르기, 흔들림 폭]
+  tone(f, dur, type, vol, f2, at = 0, vib) {
+    if (!this.ok()) return; const a = this.ac, o = a.createOscillator(), g = a.createGain(), t = a.currentTime + at;
     o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
-    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur); o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur);
+    if (vib) { const l = a.createOscillator(), lg = a.createGain(); l.frequency.value = vib[0]; lg.gain.setValueAtTime(vib[1], t); lg.gain.linearRampToValueAtTime(vib[1] * .2, t + dur); l.connect(lg).connect(o.frequency); l.start(t); l.stop(t + dur); }
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .012); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+    o.connect(g).connect(this.out); o.start(t); o.stop(t + dur + .02);
   },
-  boom() { this.noise(.45, 800, .8); this.tone(120, .3, 'sine', .55, 45); },
-  knock(v) { const now = performance.now(); if (now - this.lastKnock < 45) return; this.lastKnock = now; const vol = Math.min(.35, v / 30); this.tone(380 + Math.random() * 260, .09, 'triangle', vol, 180); this.noise(.06, 2500, vol * .6, 2); },
+  // 발사: "뽁!" + "뻥!" + 날아가는 "휘이~"
+  fire(flight) {
+    this.log.push('fire');
+    this.tone(1500, .08, 'sine', .5, 380);
+    this.noise(.38, 1200, 1.1); this.tone(240, .32, 'sine', .9, 55, .01); this.tone(120, .3, 'square', .12, 50, .01);
+    this.tone(1700, Math.max(.35, flight), 'sine', .12, 900, .1, [7, 25]);
+  },
+  // 제대로 맞음: "펑! 펑!" + 반짝
+  bang() {
+    this.log.push('bang');
+    [[0, 560, 95], [.14, 680, 120]].forEach(([at, f, f2]) => { this.noise(.2, 1900, .8, 1, at); this.tone(f, .18, 'sine', .6, f2, at); this.tone(f * 2, .08, 'square', .06, f2 * 2, at); });
+    [1568, 2093, 2637].forEach((f, i) => this.tone(f, .22, 'triangle', .11, null, .3 + i * .06));
+  },
+  // 빗맞음: "띠요오옹~"
+  boing() {
+    this.log.push('boing');
+    if (!this.ok()) return; const a = this.ac, t = a.currentTime;
+    [['triangle', 1, .34], ['sine', 2, .1]].forEach(([type, m, vol]) => {
+      const o = a.createOscillator(), g = a.createGain(), l = a.createOscillator(), lg = a.createGain();
+      o.type = type; o.frequency.setValueAtTime(240 * m, t); o.frequency.linearRampToValueAtTime(640 * m, t + .1); o.frequency.exponentialRampToValueAtTime(330 * m, t + .85);
+      l.frequency.setValueAtTime(13, t); l.frequency.linearRampToValueAtTime(6, t + .85); lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(90 * m, t + .14); lg.gain.linearRampToValueAtTime(10 * m, t + .85);
+      l.connect(lg).connect(o.frequency);
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .02); g.gain.setValueAtTime(vol, t + .4); g.gain.exponentialRampToValueAtTime(.001, t + .9);
+      o.connect(g).connect(this.out); o.start(t); l.start(t); o.stop(t + .92); l.stop(t + .92);
+    });
+    this.tone(900, .05, 'sine', .25, 500);
+  },
+  // 아무것도 못 맞힘: "휘유우~"
+  miss() { this.log.push('miss'); this.tone(1100, .9, 'sine', .3, 230, 0, [6, 30]); this.tone(2200, .9, 'sine', .05, 460, 0, [6, 60]); },
+  knock(v) { const now = performance.now(); if (now - this.lastKnock < 45) return; this.lastKnock = now; const vol = Math.min(.3, v / 34); this.tone(380 + Math.random() * 260, .09, 'triangle', vol, 180); this.noise(.06, 2500, vol * .6, 2); },
   ding(n) { this.tone(660 + Math.min(n, 12) * 40, .18, 'sine', .14); },
-  win() { [523, 659, 784, 1047, 1319].forEach((f, i) => setTimeout(() => this.tone(f, .32, 'triangle', .18), i * 110)); },
+  win() { [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, .32, 'triangle', .18, null, i * .11)); },
 };
 
 /* ---------------- 3D 화면 ---------------- */
@@ -114,9 +151,10 @@ function addBlock(spec) {
   body.sleepSpeedLimit = .12; body.sleepTimeLimit = .5;
   if (spec.ry) body.quaternion.setFromEuler(0, spec.ry, 0);
   body.addEventListener('collide', e => { const v = Math.abs(e.contact.getImpactVelocityAlongNormal()); if (v > 1.5 && playing) S.knock(v); });
+  body.isBlock = true;
   world.addBody(body); body.sleep();
   mesh.castShadow = mesh.receiveShadow = true; scene.add(mesh);
-  const b = { body, mesh, fallen: false }; blocks.push(b); sync(b); return y + h;
+  const b = { body, mesh, fallen: false }; body.blockRef = b; blocks.push(b); sync(b); return y + h;
 }
 const sync = o => { o.mesh.position.copy(o.body.position); o.mesh.quaternion.copy(o.body.quaternion); };
 
@@ -205,13 +243,21 @@ function fireAt(target) {
   const v = D.divideScalar(t); v.y += 4.91 * t;
   const body = new CANNON.Body({ mass: 9, shape: new CANNON.Sphere(.38), material: blockMat, position: new CANNON.Vec3(o.x, o.y, o.z), linearDamping: 0 });
   body.velocity.set(v.x, v.y, v.z); body.allowSleep = false;
-  body.addEventListener('collide', e => { if (!body.hit && e.body.mass > 0) { body.hit = true; wakeAll(); puff(new THREE.Vector3().copy(body.position), 6); } });
+  body.addEventListener('collide', e => {
+    if (body.hit || !e.body.isBlock) return;
+    body.hit = true; wakeAll();
+    // 정면으로 맞았는지: 구슬이 날아온 방향과 맞닿은 면이 마주 보는 정도
+    const vel = body.velocity, sp = vel.length(), n = e.contact.ni, cos = sp > 0 ? Math.abs(vel.dot(n)) / sp : 0;
+    const p = new THREE.Vector3().copy(body.position), col = e.body.blockRef ? e.body.blockRef.mesh.material.color.getHex() : 0xffffff;
+    if (cos > .72 && sp > 7) { S.bang(); popText(p, '펑펑!', 'bang'); puff(p, 7); puff(p, 5, col); shake = Math.max(shake, .1); try { navigator.vibrate && navigator.vibrate(30); } catch (_) {} }
+    else { S.boing(); popText(p, '띠요옹~', 'boing'); puff(p, 4); }
+  });
   world.addBody(body);
   const mesh = new THREE.Mesh(ballGeo, ballMat); mesh.castShadow = true; scene.add(mesh);
   balls.push({ body, mesh, born: now });
   if (balls.length > 14) removeBall(balls[0]);
   shots++; recoil = 1; shake = .12; flash.position.copy(o); flash.intensity = 30;
-  S.boom(); puff(o.clone().addScaledVector(v.clone().normalize(), 1.6), 3, 0xffffff); updHud();
+  S.fire(t); puff(o.clone().addScaledVector(v.clone().normalize(), 1.6), 3, 0xffffff); updHud();
   const m = document.createElement('div'); m.className = 'mark'; const sp = target.clone().project(camera);
   m.style.left = (sp.x + 1) / 2 * innerWidth + 'px'; m.style.top = (1 - sp.y) / 2 * innerHeight + 'px'; document.body.appendChild(m); setTimeout(() => m.remove(), 520);
   hint(false);
@@ -229,7 +275,7 @@ function confetti() { const c = ['#e84a5f', '#ffc83d', '#4f8df0', '#5cc96e', '#f
 function drawFx() { fg.setTransform(1, 0, 0, 1, 0, 0); fg.clearRect(0, 0, fx.width, fx.height); if (!conf.length) return; const d = fx.width / innerWidth; fg.scale(d, d);
   for (const p of conf) { p.x += p.vx; p.y += p.vy; p.r += p.vr; p.vy += .03; fg.save(); fg.translate(p.x, p.y); fg.rotate(p.r); fg.fillStyle = p.c; fg.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); fg.restore(); }
   conf = conf.filter(p => p.y < innerHeight + 30); }
-function popText(pos3, text) { const sp = pos3.clone().project(camera); if (sp.z > 1) return; const d = document.createElement('div'); d.className = 'pop'; d.textContent = text;
+function popText(pos3, text, cls = '') { const sp = pos3.clone().project(camera); if (sp.z > 1) return; const d = document.createElement('div'); d.className = 'pop ' + cls; d.textContent = text;
   d.style.left = Math.max(40, Math.min(innerWidth - 40, (sp.x + 1) / 2 * innerWidth)) + 'px'; d.style.top = Math.max(90, (1 - sp.y) / 2 * innerHeight) + 'px'; document.body.appendChild(d); setTimeout(() => d.remove(), 1000); }
 
 /* ---------------- 진행 ---------------- */
@@ -305,7 +351,7 @@ function frame(now) {
     if (!b.fallen && b.body.position.y < -1.3) { b.fallen = true; fallenN++; if (playing && !ended) { S.ding(fallenN); if (fallenN % 5 === 0 || leftN() === 0) popText(b.mesh.position, leftN() === 0 ? '와르르!' : `${fallenN}개!`); } updHud(); wakeAll(); }
     if (b.body.position.y < GROUND_Y - 5 && b.mesh.visible) { b.mesh.visible = false; world.removeBody(b.body); }
   }
-  for (const b of balls.slice()) { sync(b); if (now - b.born > 7000 || b.body.position.y < GROUND_Y - 3) removeBall(b); }
+  for (const b of balls.slice()) { sync(b); if (!b.body.hit && !b.missed && (b.body.position.y < -1.5 || b.body.position.x * Math.sin(camAng) + b.body.position.z * Math.cos(camAng) < -TABLE_R - .5)) { b.missed = true; if (playing && !ended) S.miss(); } if (now - b.born > 7000 || b.body.position.y < GROUND_Y - 3) removeBall(b); }
   if (playing && !ended && blocks.length && leftN() === 0) finish();
   for (const p of puffs) { p.life -= dt * 1.4; p.m.position.addScaledVector(p.v, dt); p.m.scale.setScalar(.7 + (1 - p.life) * 1.4); p.m.material.opacity = Math.max(0, p.life * .6); }
   for (let i = puffs.length - 1; i >= 0; i--) if (puffs[i].life <= 0) { scene.remove(puffs[i].m); puffs[i].m.material.dispose(); puffs.splice(i, 1); }
@@ -319,6 +365,6 @@ function frame(now) {
 resize(); sndIcon();
 setup(LEVELS[0].b); placeCamera(); aimBarrel(LOOK.clone());
 requestAnimationFrame(frame);
-window.__RS = { startLevel, startFree, get state() { return { left: leftN(), total: blocks.length, shots, ended, playing, awake: blocks.filter(b => b.body.sleepState === 0).length }; },
+window.__RS = { sfx: S.log, snd: S, startLevel, startFree, get state() { return { left: leftN(), total: blocks.length, shots, ended, playing, awake: blocks.filter(b => b.body.sleepState === 0).length }; },
   tapAt(x, y) { const t = pickTarget(x, y); if (t) fireAt(t); return !!t; },
   screenOfBlocks() { return blocks.filter(b => !b.fallen).map(b => { const s = b.mesh.position.clone().project(camera); return [(s.x + 1) / 2 * innerWidth, (1 - s.y) / 2 * innerHeight]; }); } };
